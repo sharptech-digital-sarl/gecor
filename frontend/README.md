@@ -1,6 +1,7 @@
-# FPI-CONNECT Frontend
+# GECOR Frontend
 
-Application React (Vite + TypeScript) pour FPI-CONNECT.
+Application React (Vite + TypeScript) pour **GECOR** — Gestion Electronique du
+Courrier et des Rendez-vous.
 
 ## Prérequis
 

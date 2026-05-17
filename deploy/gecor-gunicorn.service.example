@@ -1,0 +1,42 @@
+# =============================================================================
+# Modèle systemd pour le backend GECOR (FastAPI via Gunicorn + UvicornWorker).
+# Copier vers /etc/systemd/system/gecor-api.service puis :
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now gecor-api
+# =============================================================================
+
+[Unit]
+Description=GECOR API (FastAPI / Gunicorn)
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gecor
+Group=gecor
+WorkingDirectory=/opt/gecor/app/backend
+EnvironmentFile=/opt/gecor/app/backend/.env
+
+# Pré-requis : .venv créé via : python3.12 -m venv .venv && pip install -r requirements.txt gunicorn
+ExecStart=/opt/gecor/app/backend/.venv/bin/gunicorn \
+    app.main:app \
+    --worker-class uvicorn.workers.UvicornWorker \
+    --workers 4 \
+    --bind 127.0.0.1:8000 \
+    --timeout 120 \
+    --keep-alive 5 \
+    --access-logfile /var/log/gecor/gunicorn.access.log \
+    --error-logfile /var/log/gecor/gunicorn.error.log
+
+Restart=on-failure
+RestartSec=5s
+
+# Sécurité
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/gecor/storage /var/log/gecor
+
+[Install]
+WantedBy=multi-user.target

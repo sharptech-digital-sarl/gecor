@@ -97,6 +97,25 @@ class MailDocument(MailDocumentBase):
         return self
 
 
+class MailSearchResponse(BaseModel):
+    """Réponse de l'endpoint /api/v1/mail/search : items + total + facettes."""
+
+    items: List["MailDocument"]
+    total: int
+    skip: int
+    limit: int
+    facets: Dict[str, Dict[str, int]] = Field(
+        default_factory=dict,
+        description=(
+            "Agrégats par statut, direction, qualification (sur l'ensemble filtré, "
+            "pas seulement la page en cours)."
+        ),
+    )
+
+
+MailSearchResponse.model_rebuild()
+
+
 class MailVersion(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID

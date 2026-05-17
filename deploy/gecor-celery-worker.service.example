@@ -1,0 +1,33 @@
+# =============================================================================
+# Modèle systemd pour le worker Celery GECOR (OCR, e-mails, escalades).
+# Copier vers /etc/systemd/system/gecor-celery-worker.service.
+# =============================================================================
+
+[Unit]
+Description=GECOR Celery worker
+After=network-online.target redis-server.service gecor-api.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gecor
+Group=gecor
+WorkingDirectory=/opt/gecor/app/backend
+EnvironmentFile=/opt/gecor/app/backend/.env
+
+ExecStart=/opt/gecor/app/backend/.venv/bin/celery -A app.celery_app worker \
+    --loglevel=info \
+    --concurrency=4 \
+    --max-tasks-per-child=200
+
+Restart=on-failure
+RestartSec=5s
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/gecor/storage /var/log/gecor
+
+[Install]
+WantedBy=multi-user.target

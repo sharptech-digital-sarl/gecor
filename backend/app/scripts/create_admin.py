@@ -15,7 +15,7 @@ from app.models.role import Role
 
 def create_admin(
     username: str = "admin",
-    email: str = "admin@fpi-connect.local",
+    email: str = "admin@gecor.local",
     password: str = DEFAULT_INITIAL_ADMIN_PASSWORD,
     full_name: str = "System Administrator",
 ):
@@ -92,7 +92,7 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Create or reset master user password")
     parser.add_argument("--username", default="admin", help="Master username")
-    parser.add_argument("--email", default="admin@fpi-connect.local", help="Master email")
+    parser.add_argument("--email", default="admin@gecor.local", help="Master email")
     parser.add_argument(
         "--password",
         default=DEFAULT_INITIAL_ADMIN_PASSWORD,

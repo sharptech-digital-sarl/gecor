@@ -1,0 +1,94 @@
+[project]
+name = "gecor-backend"
+version = "1.0.0"
+description = "GECOR — Gestion Electronique du Courrier et des Rendez-vous — API FastAPI."
+requires-python = ">=3.12"
+readme = "README.md"
+
+# ============================================================================
+# Pytest
+# ============================================================================
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "-p", "no:cacheprovider",
+]
+markers = [
+    "integration: tests nécessitant une base PostgreSQL réelle (skip auto si GECOR_TEST_DATABASE_URL absent)",
+    "slow: tests longs (à exclure du run par défaut si besoin via -m 'not slow')",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+# ============================================================================
+# Ruff (lint + isort + pyupgrade)
+# ============================================================================
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+extend-exclude = [
+    "alembic/versions",
+    "dev-tools",
+    ".venv",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # bugbear
+    "UP",  # pyupgrade
+    "W",   # pycodestyle warnings
+    "C4",  # comprehensions
+]
+ignore = [
+    "E501",  # ligne trop longue (gérée par black)
+    "B008",  # function-call-in-default-argument (utilisé par FastAPI : Depends(...))
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]  # assert False autorisés
+"alembic/env.py" = ["F401", "F403"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+# ============================================================================
+# Black
+# ============================================================================
+[tool.black]
+line-length = 110
+target-version = ["py312"]
+extend-exclude = '''
+/(
+    \.venv
+  | alembic/versions
+  | dev-tools
+)/
+'''
+
+# ============================================================================
+# Coverage
+# ============================================================================
+[tool.coverage.run]
+branch = true
+source = ["app"]
+omit = [
+    "app/scripts/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+show_missing = true
+skip_covered = false

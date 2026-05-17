@@ -1,0 +1,36 @@
+# =============================================================================
+# Modèle systemd pour le scheduler Celery beat GECOR (rappels RDV, SLA, …).
+# Copier vers /etc/systemd/system/gecor-celery-beat.service.
+# Note : un et un seul beat doit tourner sur l'ensemble du cluster.
+# =============================================================================
+
+[Unit]
+Description=GECOR Celery beat
+After=network-online.target redis-server.service gecor-celery-worker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gecor
+Group=gecor
+WorkingDirectory=/opt/gecor/app/backend
+EnvironmentFile=/opt/gecor/app/backend/.env
+
+ExecStart=/opt/gecor/app/backend/.venv/bin/celery -A app.celery_app beat \
+    --loglevel=info \
+    --pidfile=/run/gecor/celerybeat.pid
+
+RuntimeDirectory=gecor
+RuntimeDirectoryMode=0755
+
+Restart=on-failure
+RestartSec=5s
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/log/gecor
+
+[Install]
+WantedBy=multi-user.target

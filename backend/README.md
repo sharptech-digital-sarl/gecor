@@ -1,6 +1,7 @@
-# FPI-CONNECT Backend
+# GECOR Backend
 
-FastAPI backend application for Electronic Mail Management and Appointment Management System.
+FastAPI backend pour **GECOR** — Gestion Electronique du Courrier et des
+Rendez-vous (système de GED + agenda institutionnel on-premise).
 
 ## Prerequisites
 
@@ -159,10 +160,44 @@ This writes `schema.yaml` at the repository root.
 
 - `/api/v1/auth` - Authentication endpoints
 - `/api/v1/users` - User management
-- `/api/v1/mail` - Mail management
+- `/api/v1/roles` - Roles & permissions catalog
+- `/api/v1/mail` - Mail management (upload, list, `/search`, transitions, history, file download)
 - `/api/v1/appointments` - Appointment management
+- `/api/v1/dashboard` - KPI dashboard
 - `/api/v1/signatures` - Signature management
-- `/api/v1/public` - Public endpoints
+- `/api/v1/public` - Public endpoints (booking, public posts)
+- `/api/v1/notifications` - In-app notifications + SSE stream
+- `/api/v1/deletion-requests` - Deletion workflow
+
+### Mail search (`GET /api/v1/mail/search`)
+
+Plein-texte (référence, titre, description, texte OCR, expéditeur, service) +
+filtres avancés : `status`, `direction`, `channel`, `qualification`, `tags`
+(AND), `sender_*`, `assigned_to`, `created_by`, `priority`, `overdue_only`,
+`created_from/to`, `deadline_from/to`, `archived`. Tri configurable, pagination,
+facettes par statut/direction/qualification.
+
+## Tests & qualité
+
+```bash
+pip install -r requirements-dev.txt
+pytest                  # tests smoke (in-memory)
+ruff check .            # lint
+black --check .         # format check
+ruff check --fix . && black .   # format auto
+
+# Tests d'intégration (PostgreSQL réel)
+GECOR_TEST_DATABASE_URL=postgresql://... pytest -m integration
+```
+
+## Structure des dossiers
+
+- `app/` — code applicatif (api, core, models, schemas, services, tasks).
+- `alembic/` — migrations Alembic.
+- `tests/` — tests pytest (smoke + intégration).
+- `scripts/` — scripts CLI (export_openapi, test_smtp, …).
+- `dev-tools/` — scripts ponctuels MFA / debug. Voir [`dev-tools/README.md`](dev-tools/README.md).
+- `docs/troubleshooting/` — mémos de dépannage historiques.
 
 ## Authentication Flow (MFA + Refresh Tokens)
 

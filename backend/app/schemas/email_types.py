@@ -1,7 +1,7 @@
 """Email types for API schemas.
 
 Pydantic's ``EmailStr`` / ``email-validator`` reject special-use TLDs such as
-``.local`` (RFC 6762). Dev accounts like ``admin@fpi-connect.local`` must still
+``.local`` (RFC 6762). Dev accounts like ``admin@gecor.local`` must still
 validate and serialize (e.g. ``GET /auth/me``).
 """
 import re

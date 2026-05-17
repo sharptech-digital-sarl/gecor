@@ -892,7 +892,7 @@ async def mfa_activate(
             f"Invalid verification code. "
             f"Make sure you're using the code generated from the same secret returned by /mfa/setup. "
             f"Current expected code: {expected_code} (valid for ~30 seconds). "
-            f"Tip: Use the test_mfa_helper.py script with the secret from /mfa/setup to generate the correct code."
+            f"Tip: Use backend/dev-tools/test_mfa_helper.py with the secret from /mfa/setup to generate the correct code."
         )
         
         raise HTTPException(

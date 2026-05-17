@@ -1,7 +1,9 @@
 import json
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from sqlalchemy import cast, func, or_
+from sqlalchemy.types import String as SAString
 from sqlalchemy.orm import Session
 from datetime import datetime
 import uuid
@@ -26,6 +28,7 @@ from app.schemas.mail import (
     MailAvailableActionOut,
     MailDocument as MailDocumentSchema,
     MailDocumentUpdate,
+    MailSearchResponse,
     MailTransitionRequest,
     WorkflowHistory,
 )
@@ -205,6 +208,185 @@ async def list_documents(
     documents = query.order_by(MailDocument.created_at.desc()).offset(skip).limit(limit).all()
     pending = _pending_mail_deletion_ids(db)
     return [_doc_out(doc, doc.id in pending, current_user) for doc in documents]
+
+
+_MAIL_SEARCH_SORT_COLUMNS = {
+    "created_at": MailDocument.created_at,
+    "updated_at": MailDocument.updated_at,
+    "response_deadline": MailDocument.response_deadline,
+    "reference_number": MailDocument.reference_number,
+    "title": MailDocument.title,
+}
+
+
+@router.get("/search", response_model=MailSearchResponse)
+async def search_documents(
+    q: Optional[str] = Query(
+        None,
+        description=(
+            "Recherche plein-texte sur référence, titre, description, texte OCR, "
+            "expéditeur (nom, e-mail, téléphone), service courant."
+        ),
+        max_length=255,
+    ),
+    status: Optional[List[MailStatus]] = Query(None, description="Statuts multiples (OR)."),
+    direction: Optional[List[MailDirection]] = Query(None, description="Directions multiples (OR)."),
+    channel: Optional[List[MailChannel]] = Query(None),
+    qualification: Optional[List[MailQualification]] = Query(None),
+    tags: Optional[List[str]] = Query(
+        None,
+        description=(
+            "Tags à matcher. Tous les tags fournis doivent être présents (logique AND)."
+        ),
+    ),
+    sender_email: Optional[str] = Query(None, description="Sous-chaîne d'e-mail expéditeur (ILIKE)."),
+    sender_name: Optional[str] = Query(None, description="Sous-chaîne du nom expéditeur (ILIKE)."),
+    assigned_to: Optional[uuid.UUID] = Query(None),
+    created_by: Optional[uuid.UUID] = Query(None),
+    priority: Optional[str] = Query(None, description="low | normal | high | urgent"),
+    overdue_only: bool = Query(False, description="Limiter aux courriers en retard."),
+    created_from: Optional[datetime] = Query(None),
+    created_to: Optional[datetime] = Query(None),
+    deadline_from: Optional[datetime] = Query(None),
+    deadline_to: Optional[datetime] = Query(None),
+    archived: Optional[bool] = Query(
+        None,
+        description=(
+            "true = archives uniquement, false = exclut les archives, null = pas de filtre."
+        ),
+    ),
+    sort_by: str = Query("created_at", description=", ".join(_MAIL_SEARCH_SORT_COLUMNS)),
+    sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    include_facets: bool = Query(True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Recherche multi-critères sur le courrier (full-text + filtres + facettes)."""
+    if not user_has_permission(current_user, "mail.view"):
+        raise HTTPException(status_code=403, detail="Not enough permissions to search mail")
+
+    query = db.query(MailDocument)
+
+    if not _mail_full_access_roles(current_user):
+        query = query.filter(
+            or_(
+                MailDocument.assigned_to == current_user.id,
+                MailDocument.created_by == current_user.id,
+            )
+        )
+
+    if q:
+        like = f"%{q.strip()}%"
+        query = query.filter(
+            or_(
+                MailDocument.reference_number.ilike(like),
+                MailDocument.title.ilike(like),
+                MailDocument.description.ilike(like),
+                MailDocument.ocr_text.ilike(like),
+                MailDocument.sender_name.ilike(like),
+                MailDocument.sender_email.ilike(like),
+                MailDocument.sender_phone.ilike(like),
+                MailDocument.current_department.ilike(like),
+            )
+        )
+
+    if status:
+        query = query.filter(MailDocument.status.in_(list(status)))
+    if direction:
+        query = query.filter(MailDocument.direction.in_(list(direction)))
+    if channel:
+        query = query.filter(MailDocument.channel.in_(list(channel)))
+    if qualification:
+        query = query.filter(MailDocument.qualification.in_(list(qualification)))
+    if sender_email:
+        query = query.filter(MailDocument.sender_email.ilike(f"%{sender_email}%"))
+    if sender_name:
+        query = query.filter(MailDocument.sender_name.ilike(f"%{sender_name}%"))
+    if assigned_to:
+        query = query.filter(MailDocument.assigned_to == assigned_to)
+    if created_by:
+        query = query.filter(MailDocument.created_by == created_by)
+    if priority:
+        query = query.filter(MailDocument.priority == priority)
+    if overdue_only:
+        query = query.filter(MailDocument.is_overdue.is_(True))
+    if created_from:
+        query = query.filter(MailDocument.created_at >= created_from)
+    if created_to:
+        query = query.filter(MailDocument.created_at <= created_to)
+    if deadline_from:
+        query = query.filter(MailDocument.response_deadline >= deadline_from)
+    if deadline_to:
+        query = query.filter(MailDocument.response_deadline <= deadline_to)
+    if archived is True:
+        query = query.filter(MailDocument.archived_at.isnot(None))
+    elif archived is False:
+        query = query.filter(MailDocument.archived_at.is_(None))
+
+    if tags:
+        # Tous les tags fournis doivent être présents (AND).
+        # PG JSONB : `tags @> ARRAY[tag]` ; SQLite / autres : LIKE sur la sérialisation.
+        dialect_name = db.bind.dialect.name if db.bind is not None else ""
+        for tag in tags:
+            tag_str = str(tag).strip()
+            if not tag_str:
+                continue
+            if dialect_name == "postgresql":
+                query = query.filter(MailDocument.tags.contains([tag_str]))
+            else:
+                query = query.filter(cast(MailDocument.tags, SAString).ilike(f'%"{tag_str}"%'))
+
+    if sort_by not in _MAIL_SEARCH_SORT_COLUMNS:
+        raise HTTPException(status_code=400, detail=f"Invalid sort_by (allowed: {', '.join(_MAIL_SEARCH_SORT_COLUMNS)})")
+
+    sort_col = _MAIL_SEARCH_SORT_COLUMNS[sort_by]
+    sort_expr = sort_col.desc() if sort_dir == "desc" else sort_col.asc()
+    # Tri secondaire stable
+    secondary = MailDocument.created_at.desc() if sort_by != "created_at" else MailDocument.id
+
+    total = query.with_entities(func.count(MailDocument.id)).order_by(None).scalar() or 0
+
+    documents = (
+        query.order_by(sort_expr, secondary)
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+    facets: dict[str, dict[str, int]] = {}
+    if include_facets:
+        # Sous-requête : même filtre, mais on agrège par dimension
+        for label, column in (
+            ("status", MailDocument.status),
+            ("direction", MailDocument.direction),
+            ("qualification", MailDocument.qualification),
+        ):
+            rows = (
+                query.with_entities(column, func.count(MailDocument.id))
+                .order_by(None)
+                .group_by(column)
+                .all()
+            )
+            bucket: dict[str, int] = {}
+            for value, count in rows:
+                if value is None:
+                    key = "_null"
+                else:
+                    key = str(value.value if hasattr(value, "value") else value)
+                bucket[key] = bucket.get(key, 0) + int(count)
+            facets[label] = bucket
+
+    pending = _pending_mail_deletion_ids(db)
+    items = [_doc_out(doc, doc.id in pending, current_user) for doc in documents]
+    return MailSearchResponse(
+        items=items,
+        total=int(total),
+        skip=skip,
+        limit=limit,
+        facets=facets,
+    )
 
 
 @router.post("/bulk-delete")

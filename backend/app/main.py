@@ -29,11 +29,15 @@ if os.environ.get("OPENAPI_EXPORT") != "1":
     Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
-    title="FPI-CONNECT API",
-    description="Electronic Mail Management and Appointment Management System",
+    title="GECOR API",
+    description=(
+        "GECOR — Gestion Electronique du Courrier et des Rendez-vous. "
+        "API REST pour la gestion du courrier entrant/sortant/interne, l'agenda "
+        "institutionnel, les visiteurs et l'administration on-premise."
+    ),
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
 )
 
 # Middleware order: first registered = inner, last = outer.
@@ -71,13 +75,13 @@ app.include_router(admin_console.router, prefix="/api/v1")
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return JSONResponse(content={"status": "healthy", "service": "fpi-connect"})
+    return JSONResponse(content={"status": "healthy", "service": "gecor"})
 
 
 @app.get("/")
 async def root():
     """Root endpoint"""
-    return {"message": "FPI-CONNECT API", "version": "1.0.0"}
+    return {"message": "GECOR API", "version": app.version}
 
 
 @app.get("/openapi.yaml", include_in_schema=False)

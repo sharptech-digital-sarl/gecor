@@ -1,0 +1,110 @@
+# =============================================================================
+# Modèle de configuration Nginx pour GECOR (production on-premise)
+#
+# Placez ce fichier dans /etc/nginx/sites-available/gecor.conf puis activez-le
+# via un lien symbolique vers /etc/nginx/sites-enabled/.
+#
+# Pré-requis :
+#   - Bundle statique du frontend déployé dans /opt/gecor/app/frontend/dist
+#   - Backend Gunicorn écoutant sur 127.0.0.1:8000 (service gecor-api.service)
+#   - Certificat TLS dans /etc/ssl/gecor/ (chaîne + clé privée)
+#
+# Test : sudo nginx -t && sudo systemctl reload nginx
+# =============================================================================
+
+# Redirection HTTP -> HTTPS
+server {
+    listen 80;
+    listen [::]:80;
+    server_name gecor.example.local;
+
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name gecor.example.local;
+
+    # --- TLS ---------------------------------------------------------------
+    ssl_certificate     /etc/ssl/gecor/fullchain.pem;
+    ssl_certificate_key /etc/ssl/gecor/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache   shared:GECOR_SSL:10m;
+    ssl_session_timeout 1d;
+
+    # HSTS (à activer seulement quand tout le parc accède bien en HTTPS)
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    add_header X-Frame-Options DENY always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+
+    # Taille upload : courrier scanné, photos visiteurs
+    client_max_body_size 30M;
+
+    # --- Frontend SPA ------------------------------------------------------
+    root /opt/gecor/app/frontend/dist;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Caching long pour les assets fingerprintés par Vite
+    location /assets/ {
+        access_log off;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # --- API FastAPI -------------------------------------------------------
+    location /api/ {
+        proxy_pass         http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_buffering off;
+        proxy_read_timeout  300s;
+        proxy_send_timeout  300s;
+        proxy_connect_timeout 30s;
+    }
+
+    # SSE / notifications temps réel
+    location /api/v1/notifications/stream {
+        proxy_pass         http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_set_header   Connection '';
+        proxy_buffering    off;
+        proxy_cache        off;
+        chunked_transfer_encoding off;
+        proxy_read_timeout 24h;
+    }
+
+    # Docs API (à protéger si nécessaire, par défaut accessible aux utilisateurs internes)
+    location ~ ^/(docs|redoc|openapi.json|openapi.yaml)$ {
+        proxy_pass         http://127.0.0.1:8000;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    # Sonde de santé (utilisée par Nagios, Uptime Kuma, etc.)
+    location = /health {
+        proxy_pass         http://127.0.0.1:8000/health;
+        access_log         off;
+    }
+
+    # Logs dédiés
+    access_log /var/log/nginx/gecor.access.log;
+    error_log  /var/log/nginx/gecor.error.log warn;
+}

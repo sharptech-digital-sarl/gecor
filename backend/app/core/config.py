@@ -26,7 +26,7 @@ DEFAULT_INITIAL_ADMIN_PASSWORD: str = "ChangeMoi@123!"
 
 class Settings(BaseSettings):
     # Application
-    PROJECT_NAME: str = "FPI-CONNECT"
+    PROJECT_NAME: str = "GECOR"
     VERSION: str = "1.0.0"
     API_V1_PREFIX: str = "/api/v1"
     
@@ -127,7 +127,7 @@ class Settings(BaseSettings):
     MINIO_ENDPOINT: Optional[str] = None
     MINIO_ACCESS_KEY: Optional[str] = None
     MINIO_SECRET_KEY: Optional[str] = None
-    MINIO_BUCKET: str = "fpi-connect-files"
+    MINIO_BUCKET: str = "gecor-files"
     
     # Outlook/Exchange
     MICROSOFT_GRAPH_CLIENT_ID: Optional[str] = None

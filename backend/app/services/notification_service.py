@@ -70,7 +70,7 @@ class NotificationService:
         try:
             if inline_png_cid_parts:
                 message_obj = MIMEMultipart("related")
-                message_obj["From"] = settings.SMTP_FROM or "noreply@fpi-connect.local"
+                message_obj["From"] = settings.SMTP_FROM or "noreply@gecor.local"
                 message_obj["To"] = to_email
                 message_obj["Subject"] = subject
                 msg_alt = MIMEMultipart("alternative")
@@ -85,7 +85,7 @@ class NotificationService:
                     message_obj.attach(img)
             else:
                 message_obj = MIMEMultipart("alternative")
-                message_obj["From"] = settings.SMTP_FROM or "noreply@fpi-connect.local"
+                message_obj["From"] = settings.SMTP_FROM or "noreply@gecor.local"
                 message_obj["To"] = to_email
                 message_obj["Subject"] = subject
                 message_obj.attach(MIMEText(message, "plain", "utf-8"))
