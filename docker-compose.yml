@@ -1,0 +1,118 @@
+# Stack complète : PostgreSQL, Redis, API FastAPI, Celery worker + beat, frontend (Vite → nginx).
+# Démarrage : docker compose up -d --build
+# Optionnel : .env à la racine (SECRET_KEY, VITE_API_URL, …).
+
+name: gecor
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql://gecor-admin:gecor-c05b6q%23@db:5432/gecor_connect
+  REDIS_URL: redis://redis:6379/0
+  SECRET_KEY: ${SECRET_KEY:-change-me-generate-a-long-random-string}
+  CORS_ORIGINS: '["http://localhost:3000","http://127.0.0.1:3000","http://localhost:80"]'
+  FRONTEND_URL: http://localhost:3000
+  BACKEND_URL: http://localhost:8001
+  STORAGE_TYPE: local
+  STORAGE_PATH: /app/storage
+  REFRESH_TOKEN_SECURE: "false"
+  TESSERACT_CMD: /usr/bin/tesseract
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: gecor-db
+    environment:
+      POSTGRES_USER: gecor-admin
+      POSTGRES_PASSWORD: "gecor-c05b6q#"
+      POSTGRES_DB: gecor_connect
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gecor-admin -d gecor_connect"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: gecor-redis
+    ports:
+      - "6379:6380"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Seul service qui build l’image Python (évite course Docker sur le même tag avec worker/beat).
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: gecor-backend:local
+    container_name: gecor-backend
+    ports:
+      - "8001:8001"
+    environment:
+      <<: *backend-env
+    volumes:
+      - ./backend/storage:/app/storage
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "
+        python wait_for_db.py &&
+        alembic upgrade head &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8001
+      "
+
+  celery-worker:
+    image: gecor-backend:local
+    container_name: gecor-celery-worker
+    environment:
+      <<: *backend-env
+    volumes:
+      - ./backend/storage:/app/storage
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    command: celery -A app.celery_app worker --loglevel=info
+
+  celery-beat:
+    image: gecor-backend:local
+    container_name: gecor-celery-beat
+    environment:
+      <<: *backend-env
+    volumes:
+      - ./backend/storage:/app/storage
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+      celery-worker:
+        condition: service_started
+    command: celery -A app.celery_app beat --loglevel=info
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8001/api/v1}
+    container_name: gecor-frontend
+    ports:
+      - "3001:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
